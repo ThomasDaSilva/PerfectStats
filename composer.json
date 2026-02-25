@@ -1,0 +1,14 @@
+{
+    "name": "perfectstats/perfectstats",
+    "description": "PerfectStats - Advanced Statistics Module for Thelia",
+    "type": "thelia-module",
+    "license": "LGPL-3.0+",
+    "require": {
+        "thelia/thelia-skeleton": "2.5.*"
+    },
+    "autoload": {
+        "psr-4": {
+            "PerfectStats\\": ""
+        }
+    }
+}

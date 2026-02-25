@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module xmlns="http://thelia.net/schema/dic/module"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://thelia.net/schema/dic/module http://thelia.net/schema/dic/module/module-2_1.xsd">
+    <fullnamespace>PerfectStats\PerfectStats</fullnamespace>
+    <descriptive locale="en_US">
+        <title>PerfectStats - Advanced Statistics</title>
+        <description>
+            This module allows the display of statistics about customers, orders, payments, shipping and products.
+        </description>
+    </descriptive>
+    <descriptive locale="fr_FR">
+        <title>PerfectStats - Statistiques Avancées</title>
+        <description>
+            Ce module permet l'affichage de statistiques sur les clients, les commandes, les paiements, les livraisons et les produits.
+        </description>
+    </descriptive>
+    <languages>
+        <language>en_US</language>
+        <language>fr_FR</language>
+    </languages>
+    <version>1.0.0</version>
+    <author>
+        <name>Delimard Thibault</name>
+        <email>support@delimard.fr</email>
+    </author>
+    <type>classic</type>
+    <thelia>2.5.0</thelia>
+    <stability>prod</stability>
+</module>
