@@ -71,6 +71,40 @@ class PerfectStatsController extends BaseAdminController
                 $cur  = $this->perfectStatsService->getMonthDateRange($year,     $month);
                 $prev = $this->perfectStatsService->getMonthDateRange($prevYear, $month);
                 break;
+            case 'custom':
+                $startStr  = $this->getRequest()->query->get('start', '');
+                $endStr    = $this->getRequest()->query->get('end',   '');
+                $noCompare = (bool)$this->getRequest()->query->get('no_compare', 0);
+                if (!$startStr || !$endStr) {
+                    $month = (int)$now->format('n');
+                    $cur  = $this->perfectStatsService->getMonthDateRange($year, $month);
+                    $prev = $this->perfectStatsService->getMonthDateRange($prevYear, $month);
+                    break;
+                }
+                $startDt = new \DateTime($startStr . ' 00:00:00');
+                $endDt   = new \DateTime($endStr   . ' 23:59:59');
+                $cur     = ['start' => $startDt->format('Y-m-d 00:00:00'), 'end' => $endDt->format('Y-m-d 23:59:59')];
+                $year    = (int)$endDt->format('Y');
+                if ($noCompare) {
+                    $prev     = ['start' => '1970-01-01 00:00:00', 'end' => '1970-01-01 00:00:00'];
+                    $prevYear = $year - 1;
+                } else {
+                    $prevStartStr = $this->getRequest()->query->get('prev_start', '');
+                    $prevEndStr   = $this->getRequest()->query->get('prev_end',   '');
+                    if ($prevStartStr && $prevEndStr) {
+                        $prevStartDt = new \DateTime($prevStartStr);
+                        $prevEndDt   = new \DateTime($prevEndStr);
+                    } else {
+                        $prevStartDt = clone $startDt;
+                        $prevStartDt->modify('-1 year');
+                        $prevEndDt = clone $endDt;
+                        $prevEndDt->modify('-1 year');
+                    }
+                    $prevEndDt->setTime(23, 59, 59);
+                    $prev     = ['start' => $prevStartDt->format('Y-m-d 00:00:00'), 'end' => $prevEndDt->format('Y-m-d H:i:s')];
+                    $prevYear = (int)$prevStartDt->format('Y');
+                }
+                break;
             default:
                 $cur  = $this->perfectStatsService->getYearDateRange($year);
                 $prev = $this->perfectStatsService->getYearDateRange($prevYear);
@@ -117,14 +151,24 @@ class PerfectStatsController extends BaseAdminController
     {
         try {
             [$cur, $prev, $y, $py] = $this->getDateRanges();
-            $now     = new \DateTime();
-            $mode    = $this->getRequest()->query->get('mode', 'month');
-            $month   = (int)($this->getRequest()->query->get('month', $now->format('n')));
-            $quarter = (int)($this->getRequest()->query->get('quarter', (int)ceil((int)$now->format('n') / 3)));
-            [$granularity, $labels] = $this->perfectStatsService->getGranularityForMode($mode, $y, $month, $quarter);
-            return $this->jsonResponse(json_encode(
-                $this->perfectStatsService->buildOrderStatsForRange($cur, $prev, $y, $py, $granularity, $labels)
-            ));
+            $now       = new \DateTime();
+            $mode      = $this->getRequest()->query->get('mode', 'month');
+            $month     = (int)($this->getRequest()->query->get('month',   $now->format('n')));
+            $quarter   = (int)($this->getRequest()->query->get('quarter', (int)ceil((int)$now->format('n') / 3)));
+            if ($mode === 'custom') {
+                $granReq = $this->getRequest()->query->get('granularity', 'auto');
+                [$granularity, $labels, $startDt] = $this->perfectStatsService->getGranularityForCustomRange($cur['start'], $cur['end'], $granReq);
+                $prevStartDt = new \DateTime(substr($prev['start'], 0, 10));
+                [, $prevLabels] = $this->perfectStatsService->getGranularityForCustomRange($prev['start'], $prev['end'], str_replace('custom_', '', $granularity));
+            } else {
+                [$granularity, $labels] = $this->perfectStatsService->getGranularityForMode($mode, $y, $month, $quarter);
+                $startDt = null;
+                $prevStartDt = null;
+                $prevLabels = null;
+            }
+            $result = $this->perfectStatsService->buildOrderStatsForRange($cur, $prev, $y, $py, $granularity, $labels, $startDt, $prevStartDt);
+            if ($prevLabels !== null) { $result['prev_labels'] = $prevLabels; }
+            return $this->jsonResponse(json_encode($result));
         } catch (\Exception $e) { return $this->errorResponse($e, 'getOrderStats'); }
     }
 
@@ -132,14 +176,24 @@ class PerfectStatsController extends BaseAdminController
     {
         try {
             [$cur, $prev, $y, $py] = $this->getDateRanges();
-            $now     = new \DateTime();
-            $mode    = $this->getRequest()->query->get('mode', 'month');
-            $month   = (int)($this->getRequest()->query->get('month', $now->format('n')));
-            $quarter = (int)($this->getRequest()->query->get('quarter', (int)ceil((int)$now->format('n') / 3)));
-            [$granularity, $labels] = $this->perfectStatsService->getGranularityForMode($mode, $y, $month, $quarter);
-            return $this->jsonResponse(json_encode(
-                $this->perfectStatsService->buildRevenueStatsForRange($cur, $prev, $y, $py, $granularity, $labels)
-            ));
+            $now       = new \DateTime();
+            $mode      = $this->getRequest()->query->get('mode', 'month');
+            $month     = (int)($this->getRequest()->query->get('month',   $now->format('n')));
+            $quarter   = (int)($this->getRequest()->query->get('quarter', (int)ceil((int)$now->format('n') / 3)));
+            if ($mode === 'custom') {
+                $granReq = $this->getRequest()->query->get('granularity', 'auto');
+                [$granularity, $labels, $startDt] = $this->perfectStatsService->getGranularityForCustomRange($cur['start'], $cur['end'], $granReq);
+                $prevStartDt = new \DateTime(substr($prev['start'], 0, 10));
+                [, $prevLabels] = $this->perfectStatsService->getGranularityForCustomRange($prev['start'], $prev['end'], str_replace('custom_', '', $granularity));
+            } else {
+                [$granularity, $labels] = $this->perfectStatsService->getGranularityForMode($mode, $y, $month, $quarter);
+                $startDt = null;
+                $prevStartDt = null;
+                $prevLabels = null;
+            }
+            $result = $this->perfectStatsService->buildRevenueStatsForRange($cur, $prev, $y, $py, $granularity, $labels, $startDt, $prevStartDt);
+            if ($prevLabels !== null) { $result['prev_labels'] = $prevLabels; }
+            return $this->jsonResponse(json_encode($result));
         } catch (\Exception $e) { return $this->errorResponse($e, 'getRevenueStats'); }
     }
 

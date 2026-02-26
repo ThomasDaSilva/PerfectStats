@@ -9,6 +9,8 @@ use Thelia\Model\OrderCouponQuery;
 use Thelia\Model\CustomerQuery;
 use Thelia\Model\ModuleQuery;
 use Thelia\Model\ProductQuery;
+use Thelia\Model\OrderAddressQuery;
+use Thelia\Model\CountryQuery;
 use Thelia\Core\Translation\Translator;
 
 class PerfectStatsService
@@ -74,6 +76,62 @@ class PerfectStatsService
     }
 
 
+    public function getGranularityForCustomRange(string $startDate, string $endDate, string $granularity): array
+    {
+        $startDt = new \DateTime(substr($startDate, 0, 10));
+        $endDt   = new \DateTime(substr($endDate,   0, 10));
+
+        if ($granularity === 'auto') {
+            $days = (int)$startDt->diff($endDt)->days + 1;
+            if ($days <= 31)   $granularity = 'day';
+            elseif ($days <= 366)  $granularity = 'month';
+            elseif ($days <= 1095) $granularity = 'quarter';
+            else                   $granularity = 'year';
+        }
+
+        switch ($granularity) {
+            case 'day':
+                $labels = [];
+                $d = clone $startDt;
+                while ($d <= $endDt) {
+                    $labels[] = $d->format('d/m/y');
+                    $d->modify('+1 day');
+                }
+                return ['custom_day', $labels, $startDt];
+
+            case 'month':
+                $abbr = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+                $labels = [];
+                $d = new \DateTime($startDt->format('Y-m-01'));
+                $last = new \DateTime($endDt->format('Y-m-01'));
+                while ($d <= $last) {
+                    $labels[] = $abbr[(int)$d->format('n') - 1] . ' ' . $d->format('y');
+                    $d->modify('+1 month');
+                }
+                return ['custom_month', $labels, $startDt];
+
+            case 'quarter':
+                $labels = [];
+                $y = (int)$startDt->format('Y');
+                $q = (int)ceil((int)$startDt->format('n') / 3);
+                $ey = (int)$endDt->format('Y');
+                $eq = (int)ceil((int)$endDt->format('n') / 3);
+                while ($y < $ey || ($y === $ey && $q <= $eq)) {
+                    $labels[] = 'T' . $q . ' ' . $y;
+                    if (++$q > 4) { $q = 1; $y++; }
+                }
+                return ['custom_quarter', $labels, $startDt];
+
+            default: // year
+                $labels = [];
+                for ($y = (int)$startDt->format('Y'); $y <= (int)$endDt->format('Y'); $y++) {
+                    $labels[] = (string)$y;
+                }
+                return ['custom_year', $labels, $startDt];
+        }
+    }
+
+
     public function getGranularityForMode(string $mode, int $year, int $month, int $quarter): array
     {
         switch ($mode) {
@@ -97,42 +155,57 @@ class PerfectStatsService
     }
 
 
-    public function buildOrderStatsForRange($currentRange, $previousRange, $currentYear, $previousYear, $granularity, $labels): array
+    public function buildOrderStatsForRange($currentRange, $previousRange, $currentYear, $previousYear, $granularity, $labels, ?\DateTime $startDt = null, ?\DateTime $prevStartDt = null): array
     {
         return [
-            'labels'       => $labels,
-            'current_year' => $currentYear,
-            'previous_year'=> $previousYear,
-            'current'  => $this->aggregateOrderData($currentRange['start'],  $currentRange['end'],  $granularity, count($labels)),
-            'previous' => $this->aggregateOrderData($previousRange['start'], $previousRange['end'], $granularity, count($labels))
+            'labels'        => $labels,
+            'current_year'  => $currentYear,
+            'previous_year' => $previousYear,
+            'current'  => $this->aggregateOrderData($currentRange['start'],  $currentRange['end'],  $granularity, count($labels), $startDt),
+            'previous' => $this->aggregateOrderData($previousRange['start'], $previousRange['end'], $granularity, count($labels), $prevStartDt ?? $startDt)
         ];
     }
 
 
-    public function buildRevenueStatsForRange($currentRange, $previousRange, $currentYear, $previousYear, $granularity, $labels): array
+    public function buildRevenueStatsForRange($currentRange, $previousRange, $currentYear, $previousYear, $granularity, $labels, ?\DateTime $startDt = null, ?\DateTime $prevStartDt = null): array
     {
         return [
-            'labels'       => $labels,
-            'current_year' => $currentYear,
-            'previous_year'=> $previousYear,
-            'current'  => $this->aggregateRevenueData($currentRange['start'],  $currentRange['end'],  $granularity, count($labels)),
-            'previous' => $this->aggregateRevenueData($previousRange['start'], $previousRange['end'], $granularity, count($labels))
+            'labels'        => $labels,
+            'current_year'  => $currentYear,
+            'previous_year' => $previousYear,
+            'current'  => $this->aggregateRevenueData($currentRange['start'],  $currentRange['end'],  $granularity, count($labels), $startDt),
+            'previous' => $this->aggregateRevenueData($previousRange['start'], $previousRange['end'], $granularity, count($labels), $prevStartDt ?? $startDt)
         ];
     }
 
-    protected function getAggregationIndex(\DateTime $date, string $granularity): int
+    protected function getAggregationIndex(\DateTime $date, string $granularity, ?\DateTime $startDt = null): int
     {
         switch ($granularity) {
-            case 'hour':            return (int)$date->format('G');
-            case 'day_of_month':    return (int)$date->format('j') - 1;
-            case 'day_of_week':     return (int)$date->format('N') - 1;
+            case 'hour':             return (int)$date->format('G');
+            case 'day_of_month':     return (int)$date->format('j') - 1;
+            case 'day_of_week':      return (int)$date->format('N') - 1;
             case 'month_in_quarter': return ((int)$date->format('n') - 1) % 3;
-            case 'month':           return (int)$date->format('n') - 1;
+            case 'month':            return (int)$date->format('n') - 1;
+            case 'custom_day':
+                if (!$startDt) return 0;
+                return (int)$startDt->diff($date)->days;
+            case 'custom_month':
+                if (!$startDt) return 0;
+                return ((int)$date->format('Y') - (int)$startDt->format('Y')) * 12
+                     + ((int)$date->format('n') - (int)$startDt->format('n'));
+            case 'custom_quarter':
+                if (!$startDt) return 0;
+                $sq = (int)$startDt->format('Y') * 4 + (int)ceil((int)$startDt->format('n') / 3) - 1;
+                $dq = (int)$date->format('Y')   * 4 + (int)ceil((int)$date->format('n')   / 3) - 1;
+                return $dq - $sq;
+            case 'custom_year':
+                if (!$startDt) return 0;
+                return (int)$date->format('Y') - (int)$startDt->format('Y');
             default: return 0;
         }
     }
 
-    protected function aggregateOrderData(string $startDate, string $endDate, string $granularity, int $count): array
+    protected function aggregateOrderData(string $startDate, string $endDate, string $granularity, int $count, ?\DateTime $startDt = null): array
     {
         $orders   = OrderQuery::create()
             ->filterByCreatedAt($startDate, Criteria::GREATER_EQUAL)
@@ -141,7 +214,7 @@ class PerfectStatsService
         $sent      = array_fill(0, $count, 0);
         $cancelled = array_fill(0, $count, 0);
         foreach ($orders as $order) {
-            $idx = $this->getAggregationIndex($order->getCreatedAt(), $granularity);
+            $idx = $this->getAggregationIndex($order->getCreatedAt(), $granularity, $startDt);
             if ($idx >= 0 && $idx < $count) {
                 if ($order->getStatusId() === self::ORDER_STATUS_SENT)      $sent[$idx]++;
                 elseif ($order->getStatusId() === self::ORDER_STATUS_CANCELLED) $cancelled[$idx]++;
@@ -150,7 +223,7 @@ class PerfectStatsService
         return ['sent' => $sent, 'cancelled' => $cancelled];
     }
 
-    protected function aggregateRevenueData(string $startDate, string $endDate, string $granularity, int $count): array
+    protected function aggregateRevenueData(string $startDate, string $endDate, string $granularity, int $count, ?\DateTime $startDt = null): array
     {
         $orders  = OrderQuery::create()
             ->filterByCreatedAt($startDate, Criteria::GREATER_EQUAL)
@@ -159,7 +232,7 @@ class PerfectStatsService
             ->find();
         $revenue = array_fill(0, $count, 0.0);
         foreach ($orders as $order) {
-            $idx = $this->getAggregationIndex($order->getCreatedAt(), $granularity);
+            $idx = $this->getAggregationIndex($order->getCreatedAt(), $granularity, $startDt);
             if ($idx >= 0 && $idx < $count) {
                 $revenue[$idx] += $order->getTotalAmount();
             }
@@ -631,12 +704,21 @@ class PerfectStatsService
             ->filterByStatusId(self::VALID_STATUSES, Criteria::IN)
             ->find();
 
+        $allCustomerIds = [];
+        foreach ($currentOrders  as $o) { if ($o->getCustomerId()) $allCustomerIds[$o->getCustomerId()] = true; }
+        foreach ($previousOrders as $o) { if ($o->getCustomerId()) $allCustomerIds[$o->getCustomerId()] = true; }
+        $customerMap = [];
+        if (!empty($allCustomerIds)) {
+            $customerObjects = CustomerQuery::create()->filterById(array_keys($allCustomerIds), Criteria::IN)->find();
+            foreach ($customerObjects as $c) { $customerMap[$c->getId()] = $c; }
+        }
+
         $currentCustomerStats = [];
         foreach ($currentOrders as $order) {
             $customerId = $order->getCustomerId();
             if (!$customerId) continue;
             if (!isset($currentCustomerStats[$customerId])) {
-                $customer = $order->getCustomer();
+                $customer = $customerMap[$customerId] ?? null;
                 $currentCustomerStats[$customerId] = [
                     'email' => $customer ? $customer->getEmail() : 'Unknown',
                     'firstname' => $customer ? $customer->getFirstname() : '',
@@ -659,7 +741,7 @@ class PerfectStatsService
             $customerId = $order->getCustomerId();
             if (!$customerId) continue;
             if (!isset($previousCustomerStats[$customerId])) {
-                $customer = $order->getCustomer();
+                $customer = $customerMap[$customerId] ?? null;
                 $previousCustomerStats[$customerId] = [
                     'email' => $customer ? $customer->getEmail() : 'Unknown',
                     'firstname' => $customer ? $customer->getFirstname() : '',
@@ -737,8 +819,25 @@ class PerfectStatsService
             ->filterByStatusId(self::VALID_STATUSES, Criteria::IN)
             ->find();
 
-        $currentCountryStats = $this->getCountryStats($currentOrders, $locale);
-        $previousCountryStats = $this->getCountryStats($previousOrders, $locale);
+        $allAddressIds = [];
+        foreach ($currentOrders  as $o) { if ($o->getDeliveryOrderAddressId()) $allAddressIds[$o->getDeliveryOrderAddressId()] = true; }
+        foreach ($previousOrders as $o) { if ($o->getDeliveryOrderAddressId()) $allAddressIds[$o->getDeliveryOrderAddressId()] = true; }
+        $addressMap = [];
+        if (!empty($allAddressIds)) {
+            $addresses = OrderAddressQuery::create()->filterById(array_keys($allAddressIds), Criteria::IN)->find();
+            foreach ($addresses as $addr) { $addressMap[$addr->getId()] = $addr; }
+        }
+
+        $countryIds = [];
+        foreach ($addressMap as $addr) { if ($addr->getCountryId()) $countryIds[$addr->getCountryId()] = true; }
+        $countryMap = [];
+        if (!empty($countryIds)) {
+            $countries = CountryQuery::create()->filterById(array_keys($countryIds), Criteria::IN)->find();
+            foreach ($countries as $country) { $countryMap[$country->getId()] = $country; }
+        }
+
+        $currentCountryStats = $this->getCountryStats($currentOrders, $locale, $addressMap, $countryMap);
+        $previousCountryStats = $this->getCountryStats($previousOrders, $locale, $addressMap, $countryMap);
 
         foreach ($currentCountryStats as &$c) { $c['total_amount'] = round($c['total_amount'], 2); }
         foreach ($previousCountryStats as &$c) { $c['total_amount'] = round($c['total_amount'], 2); }
@@ -752,19 +851,20 @@ class PerfectStatsService
     }
 
 
-    protected function getCountryStats($orders, $locale = 'fr_FR')
+    protected function getCountryStats($orders, $locale = 'fr_FR', $addressMap = [], $countryMap = [])
     {
         $countryStats = [];
 
         foreach ($orders as $order) {
-            $orderAddress = $order->getOrderAddressRelatedByDeliveryOrderAddressId();
+            $addressId    = $order->getDeliveryOrderAddressId();
+            $orderAddress = $addressId ? ($addressMap[$addressId] ?? null) : null;
             if (!$orderAddress) continue;
 
             $countryId = $orderAddress->getCountryId();
             if (!$countryId) continue;
 
             if (!isset($countryStats[$countryId])) {
-                $country = $orderAddress->getCountry();
+                $country     = $countryMap[$countryId] ?? null;
                 $countryName = 'Unknown';
                 $countryCode = '';
                 if ($country) {

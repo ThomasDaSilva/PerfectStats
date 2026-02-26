@@ -4,11 +4,9 @@
     "type": "thelia-module",
     "license": "LGPL-3.0+",
     "require": {
-        "thelia/thelia-skeleton": "2.5.*"
+        "thelia/installer": "~1.1"
     },
-    "autoload": {
-        "psr-4": {
-            "PerfectStats\\": ""
-        }
+    "extra": {
+        "installer-name": "PerfectStats"
     }
 }

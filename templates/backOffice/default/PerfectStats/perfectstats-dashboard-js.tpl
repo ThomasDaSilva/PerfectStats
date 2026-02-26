@@ -9,6 +9,12 @@
     var currentWeek      = PERFECTSTATS_YEARS.currentWeek;
     var currentQuarter   = PERFECTSTATS_YEARS.currentQuarter;
     var currentMode      = 'month';
+    var customStart       = '';
+    var customEnd         = '';
+    var customPrevStart   = '';
+    var customPrevEnd     = '';
+    var customCompare     = true;
+    var customGranularity = 'month';
     var charts = {};
     
     var COLORS = ['#337ab7','#5cb85c','#d9534f','#f0ad4e','#5bc0de','#9b59b6','#1abc9c','#e67e22','#e74c3c','#3498db','#2ecc71','#f39c12','#8e44ad','#16a085','#d35400'];
@@ -19,8 +25,31 @@
     function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
     function handleAjaxError(xhr, status, error, name) { console.error('PerfectStats API Error (' + name + '):', {status: xhr.status, ajaxStatus: status, error: error, response: xhr.responseText}); }
 
+    // Compute same calendar dates -1 year (PHP::modify('-1 year') equivalent in JS)
+    function computeNMinusOne(start, end) {
+        function shiftYear(iso) {
+            var y = +iso.slice(0,4) - 1, m = iso.slice(5,7), d = iso.slice(8,10);
+            // Handle Feb 29 on non-leap year
+            if (m === '02' && d === '29') {
+                var isLeap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+                if (!isLeap) d = '28';
+            }
+            return y + '-' + m + '-' + d;
+        }
+        return { prevStart: shiftYear(start), prevEnd: shiftYear(end) };
+    }
+
     // ── Period params ──────────────────────────────────────────────────────────
     function buildApiParams() {
+        if (currentMode === 'custom') {
+            var p = '?mode=custom&start=' + customStart + '&end=' + customEnd + '&granularity=' + customGranularity;
+            if (!customCompare) {
+                p += '&no_compare=1';
+            } else if (customPrevStart && customPrevEnd) {
+                p += '&prev_start=' + customPrevStart + '&prev_end=' + customPrevEnd;
+            }
+            return p;
+        }
         var p = '?mode=' + currentMode + '&year=' + currentYear;
         if (currentMode === 'month')   p += '&month='   + currentMonth;
         if (currentMode === 'week')    p += '&week='    + currentWeek;
@@ -43,6 +72,15 @@
             case 'week':    cur = 'S' + currentWeek    + ' ' + currentYear; prev = 'S' + currentWeek    + ' ' + previousYear; break;
             case 'quarter': cur = 'T' + currentQuarter + ' ' + currentYear; prev = 'T' + currentQuarter + ' ' + previousYear; break;
             case 'month':   cur = currentMonthName + ' ' + currentYear;     prev = currentMonthName + ' ' + previousYear; break;
+            case 'custom':
+                if (customStart) {
+                    var fmtISO = function(iso){ return iso.split('-').reverse().join('/'); };
+                    cur = fmtISO(customStart) + ' → ' + fmtISO(customEnd);
+                    if (customCompare && customPrevStart) {
+                        prev = fmtISO(customPrevStart) + ' → ' + fmtISO(customPrevEnd);
+                    } else { prev = '—'; }
+                } else { cur = '…'; prev = '—'; }
+                break;
             default:        cur = currentYear.toString(); prev = previousYear.toString();
         }
         return {current: cur, previous: prev};
@@ -57,6 +95,10 @@
             case 'week':    pt = PERFECTSTATS_LABELS.periodWeek    + ' : ' + lbl.current + vs + lbl.previous; break;
             case 'quarter': pt = PERFECTSTATS_LABELS.periodQuarter + ' : ' + lbl.current + vs + lbl.previous; break;
             case 'month':   pt = PERFECTSTATS_LABELS.periodMonth   + ' : ' + lbl.current + vs + lbl.previous; break;
+            case 'custom':
+                if (customStart) { pt = PERFECTSTATS_LABELS.periodCustom + ' ' + lbl.current + (customCompare ? vs + lbl.previous : ' (' + PERFECTSTATS_LABELS.noCompareLabel + ')'); }
+                else { pt = PERFECTSTATS_LABELS.customMode; }
+                break;
             default:        pt = PERFECTSTATS_LABELS.periodYear    + ' : ' + lbl.current + vs + lbl.previous;
         }
         $('#period-label').text(pt);
@@ -80,6 +122,7 @@
             case 'week':    return '<span class="fa fa-calendar-o"></span> ' + PERFECTSTATS_LABELS.week    + ' — S' + currentWeek    + ' ' + currentYear;
             case 'quarter': return '<span class="fa fa-pie-chart"></span> '  + PERFECTSTATS_LABELS.quarter + ' — T' + currentQuarter + ' ' + currentYear;
             case 'month':   return '<span class="fa fa-calendar"></span> '   + PERFECTSTATS_LABELS.month   + ' — ' + currentMonthName + ' ' + currentYear;
+            case 'custom':  return '<span class="fa fa-sliders"></span> ' + PERFECTSTATS_LABELS.customMode + (customStart ? ' : ' + customStart.split('-').reverse().join('/') + ' → ' + customEnd.split('-').reverse().join('/') : '');
             default:        return '<span class="fa fa-line-chart"></span> '  + PERFECTSTATS_LABELS.year    + ' ' + currentYear;
         }
     }
@@ -123,7 +166,7 @@
             var ctx = document.getElementById('revenueChart');
             if (!ctx) return;
             var labels = getPeriodLabels();
-            charts['revenueChart'] = new Chart(ctx.getContext('2d'), {type: 'line', data: {labels: data.labels, datasets: [{label: labels.current, data: data.current, borderColor: '#337ab7', backgroundColor: 'rgba(51, 122, 183, 0.1)', borderWidth: 2, fill: true, tension: 0.3}, {label: labels.previous, data: data.previous, borderColor: '#5bc0de', backgroundColor: 'rgba(91, 192, 222, 0.1)', borderWidth: 2, borderDash: [5, 5], fill: true, tension: 0.3}]}, options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: 'top'}}, scales: {y: {beginAtZero: true, ticks: {callback: function(v) { return new Intl.NumberFormat('fr-FR', {style: 'currency', currency: 'EUR', maximumFractionDigits: 0}).format(v); }}}}}});
+            charts['revenueChart'] = new Chart(ctx.getContext('2d'), {type: 'line', data: {labels: data.labels, datasets: [{label: labels.current, data: data.current, borderColor: '#337ab7', backgroundColor: 'rgba(51, 122, 183, 0.1)', borderWidth: 2, fill: true, tension: 0.3}, {label: labels.previous, data: data.previous, borderColor: '#5bc0de', backgroundColor: 'rgba(91, 192, 222, 0.1)', borderWidth: 2, borderDash: [5, 5], fill: true, tension: 0.3}]}, options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {position: 'top'}, tooltip: {callbacks: {title: function() { return ''; }, label: function(ctx) { var lbl = (ctx.datasetIndex === 1 && data.prev_labels) ? data.prev_labels[ctx.dataIndex] : data.labels[ctx.dataIndex]; var val = new Intl.NumberFormat('fr-FR', {style: 'currency', currency: 'EUR', maximumFractionDigits: 0}).format(ctx.parsed.y); return ' ' + lbl + ' : ' + val; }}}}, scales: {y: {beginAtZero: true, ticks: {callback: function(v) { return new Intl.NumberFormat('fr-FR', {style: 'currency', currency: 'EUR', maximumFractionDigits: 0}).format(v); }}}}}});
         }, error: function(xhr, status, error) { handleAjaxError(xhr, status, error, 'revenue'); }});
     }
     
@@ -143,7 +186,7 @@
                 var current = data.current[method] || {count: 0, amount: 0};
                 var previous = data.previous[method] || {count: 0, amount: 0};
                 var evolution = previous.count > 0 ? ((current.count - previous.count) / previous.count) * 100 : 0;
-                tbody.append('<tr><td>' + method + '</td><td>'  + current.count + ' (' + formatCurrency(current.amount) + ')</td><td>' + previous.count + ' (' + formatCurrency(previous.amount) + ')</td><td class="' + (evolution >= 0 ? 'positive' : 'negative') + '">' + formatPercentage(evolution) + '</td></tr>');
+                tbody.append('<tr><td>' + method + '</td><td>'  + current.count + ' (' + formatCurrency(current.amount) + ')</td><td class="compare-hide">' + previous.count + ' (' + formatCurrency(previous.amount) + ')</td><td class="compare-hide ' + (evolution >= 0 ? 'positive' : 'negative') + '">' + formatPercentage(evolution) + '</td></tr>');
             });
             if (tbody.children().length === 0) tbody.append('<tr><td colspan="4" class="text-center text-muted">' + PERFECTSTATS_LABELS.noData + '</td></tr>');
         }, error: function(xhr, status, error) { handleAjaxError(xhr, status, error, 'payments'); }});
@@ -165,7 +208,7 @@
                 var current = data.current[method] || {count: 0, amount: 0};
                 var previous = data.previous[method] || {count: 0, amount: 0};
                 var evolution = previous.count > 0 ? ((current.count - previous.count) / previous.count) * 100 : 0;
-                tbody.append('<tr><td>' + method + '</td><td>' + current.count + ' (' + formatCurrency(current.amount) + ')</td><td>' + previous.count + ' (' + formatCurrency(previous.amount) + ')</td><td class="' + (evolution >= 0 ? 'positive' : 'negative') + '">' + formatPercentage(evolution) + '</td></tr>');
+                tbody.append('<tr><td>' + method + '</td><td>' + current.count + ' (' + formatCurrency(current.amount) + ')</td><td class="compare-hide">' + previous.count + ' (' + formatCurrency(previous.amount) + ')</td><td class="compare-hide ' + (evolution >= 0 ? 'positive' : 'negative') + '">' + formatPercentage(evolution) + '</td></tr>');
             });
             if (tbody.children().length === 0) tbody.append('<tr><td colspan="4" class="text-center text-muted">' + PERFECTSTATS_LABELS.noData + '</td></tr>');
         }, error: function(xhr, status, error) { handleAjaxError(xhr, status, error, 'shipping'); }});
@@ -251,7 +294,7 @@
                 var evolution = item.previous.order_count > 0 ? ((item.current.order_count - item.previous.order_count) / item.previous.order_count) * 100 : 0;
                 var evoText = item.previous.order_count > 0 ? '<span class="' + (evolution >= 0 ? 'positive' : 'negative') + '">' + formatPercentage(evolution) + '</span>' : (item.current.order_count > 0 ? '<span class="text-success">Nouveau</span>' : '--');
                 var countryDisplay = item.flag ? item.flag + ' ' + item.name : item.name;
-                tbody.append('<tr><td><strong>' + rank + '</strong></td><td>' + countryDisplay + '</td><td>' + item.current.order_count + (item.current.order_count > 0 ? ' (' + formatCurrency(item.current.total_amount) + ')' : '') + '</td><td>' + item.previous.order_count + (item.previous.order_count > 0 ? ' (' + formatCurrency(item.previous.total_amount) + ')' : '') + '</td><td>' + evoText + '</td></tr>');
+                tbody.append('<tr><td><strong>' + rank + '</strong></td><td>' + countryDisplay + '</td><td>' + item.current.order_count + (item.current.order_count > 0 ? ' (' + formatCurrency(item.current.total_amount) + ')' : '') + '</td><td class="compare-hide">' + item.previous.order_count + (item.previous.order_count > 0 ? ' (' + formatCurrency(item.previous.total_amount) + ')' : '') + '</td><td class="compare-hide">' + evoText + '</td></tr>');
                 rank++;
             });
             if (tbody.children().length === 0) tbody.append('<tr><td colspan="5" class="text-center text-muted">' + PERFECTSTATS_LABELS.noData + '</td></tr>');
@@ -306,7 +349,27 @@
         }, error: function(xhr, s, e) { handleAjaxError(xhr, s, e, 'coupons'); }});
     }
 
+    function applyCompareVisibility() {
+        if (currentMode === 'custom' && !customCompare) {
+            $('.perfectstats-dashboard').addClass('no-compare');
+        } else {
+            $('.perfectstats-dashboard').removeClass('no-compare');
+        }
+        if (currentMode === 'custom' && customStart) {
+            $('#granularity-bar').addClass('visible');
+        } else {
+            $('#granularity-bar').removeClass('visible');
+        }
+        // Show/hide compare row in panel
+        if (customCompare) {
+            $('#custom-compare-row').removeClass('hidden');
+        } else {
+            $('#custom-compare-row').addClass('hidden');
+        }
+    }
+
     function loadAllStats() {
+        applyCompareVisibility();
         updatePeriodLabels();
         loadSummary();
         loadOrdersChart();
@@ -323,21 +386,100 @@
         loadAllStats();
 
         $(document).on('click', function(e) {
-            if (!$(e.target).closest('.period-dropdown-wrapper').length) $('#period-dropdown-menu').removeClass('open');
+            if (!$(e.target).closest('.period-dropdown-wrapper').length) {
+                $('#period-dropdown-menu').removeClass('open');
+                $('#custom-period-panel').removeClass('open');
+            }
         });
         $('#period-dropdown-btn').on('click', function(e) {
             e.stopPropagation();
+            $('#custom-period-panel').removeClass('open');
             $('#period-dropdown-menu').toggleClass('open');
         });
         $('.period-option').on('click', function() {
             var mode = $(this).data('mode');
             $('#period-dropdown-menu').removeClass('open');
-            if (currentMode === mode) return;
-            currentMode = mode;
             $('.period-option').removeClass('active');
             $(this).addClass('active');
+            if (mode === 'custom') {
+                currentMode = 'custom';
+                $('#custom-period-panel').addClass('open');
+                $('#period-btn-label').html(getDropdownLabel());
+                return;
+            }
+            if (currentMode === mode) return;
+            currentMode = mode;
+            customStart = ''; // reset custom when switching to a standard mode
+            $('#custom-period-panel').removeClass('open');
             $('#period-btn-label').html(getDropdownLabel());
             loadAllStats();
+        });
+        // Granularity buttons (visible in custom mode)
+        $(document).on('click', '#granularity-bar .btn-group .btn', function() {
+            var gran = $(this).data('gran');
+            if (gran === customGranularity) return;
+            customGranularity = gran;
+            $('#granularity-bar .btn-group .btn').removeClass('active');
+            $(this).addClass('active');
+            loadOrdersChart();
+        });
+        $('#btn-apply-custom').on('click', function() {
+            var s = $('#custom-date-start').val();
+            var e = $('#custom-date-end').val();
+            if (!s || !e) { alert('Veuillez renseigner les deux dates.'); return; }
+            if (s > e)    { alert('La date de début doit être antérieure à la date de fin.'); return; }
+            customStart   = s;
+            customEnd     = e;
+            customCompare = $('#custom-compare').is(':checked');
+            if (customCompare) {
+                var ps = $('#custom-date-prev-start').val();
+                var pe = $('#custom-date-prev-end').val();
+                if (ps && pe && ps <= pe) {
+                    customPrevStart = ps;
+                    customPrevEnd   = pe;
+                } else {
+                    // Fallback to N-1 if fields empty or invalid
+                    var n1 = computeNMinusOne(s, e);
+                    customPrevStart = n1.prevStart;
+                    customPrevEnd   = n1.prevEnd;
+                    $('#custom-date-prev-start').val(customPrevStart);
+                    $('#custom-date-prev-end').val(customPrevEnd);
+                }
+            }
+            // Auto-select granularity
+            var msS = Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10));
+            var msE = Date.UTC(+e.slice(0,4), +e.slice(5,7)-1, +e.slice(8,10));
+            var days = (msE - msS) / 86400000 + 1;
+            customGranularity = days <= 31 ? 'day' : days <= 366 ? 'month' : days <= 1095 ? 'quarter' : 'year';
+            $('#granularity-bar .btn-group .btn').removeClass('active');
+            $('#granularity-bar .btn-group .btn[data-gran="' + customGranularity + '"]').addClass('active');
+            $('#custom-period-panel').removeClass('open');
+            $('#period-btn-label').html(getDropdownLabel());
+            loadAllStats();
+        });
+        // When main dates change: auto-fill comparison fields with N-1
+        $(document).on('change', '#custom-date-start, #custom-date-end', function() {
+            var s = $('#custom-date-start').val();
+            var e = $('#custom-date-end').val();
+            if (s && e && s <= e) {
+                var n1 = computeNMinusOne(s, e);
+                $('#custom-date-prev-start').val(n1.prevStart);
+                $('#custom-date-prev-end').val(n1.prevEnd);
+            }
+        });
+        // Reset comparison to N-1
+        $('#btn-reset-prev').on('click', function() {
+            var s = $('#custom-date-start').val();
+            var e = $('#custom-date-end').val();
+            if (!s || !e) return;
+            var n1 = computeNMinusOne(s, e);
+            $('#custom-date-prev-start').val(n1.prevStart);
+            $('#custom-date-prev-end').val(n1.prevEnd);
+        });
+        // Toggle comparison row
+        $('#custom-compare').on('change', function() {
+            customCompare = $(this).is(':checked');
+            applyCompareVisibility();
         });
 
         $('a[data-toggle="tab"]').on('shown.bs.tab', function() {
