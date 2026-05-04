@@ -3,14 +3,13 @@
 namespace PerfectStats\Controller;
 
 use PerfectStats\Service\PerfectStatsService;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Thelia\Controller\Admin\BaseAdminController;
 
 class PerfectStatsController extends BaseAdminController
 {
-    protected $perfectStatsService;
-
     private $monthKeys = [
         1 => 'perfectstats.month.january',   2 => 'perfectstats.month.february',
         3 => 'perfectstats.month.march',      4 => 'perfectstats.month.april',
@@ -20,10 +19,8 @@ class PerfectStatsController extends BaseAdminController
         11 => 'perfectstats.month.november', 12 => 'perfectstats.month.december'
     ];
 
-    public function __construct(PerfectStatsService $perfectStatsService)
-    {
-        $this->perfectStatsService = $perfectStatsService;
-    }
+    public function __construct(protected PerfectStatsService $perfectStatsService, protected LoggerInterface $logger)
+    {}
 
     private function getMonthName($month): string
     {
@@ -44,9 +41,6 @@ class PerfectStatsController extends BaseAdminController
     }
 
 
-    /**
-     * @throws \DateMalformedStringException
-     */
     private function getDateRanges(): array
     {
         $now     = new \DateTime();
@@ -120,8 +114,8 @@ class PerfectStatsController extends BaseAdminController
 
     private function errorResponse(\Exception $e, string $action): Response
     {
-        error_log('PerfectStats ' . $action . ' Error: ' . $e->getMessage() . ' - ' . $e->getTraceAsString());
-        return $this->jsonResponse(json_encode(['error' => true, 'message' => $e->getMessage(), 'code' => $e->getCode()]), 500);
+        $this->logger->error('PerfectStats ' . $action . ' error: ' . $e->getMessage(), ['exception' => $e]);
+        return $this->jsonResponse(json_encode(['error' => true, 'message' => 'Une erreur interne est survenue.']), 500);
     }
 
     #[Route("/admin/module/perfectstats", name: "perfectstats.dashboard", methods: ["GET"])]

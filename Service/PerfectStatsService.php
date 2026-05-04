@@ -3,7 +3,7 @@
 namespace PerfectStats\Service;
 
 use Propel\Runtime\ActiveQuery\Criteria;
-use Propel\Runtime\Exception\PropelException;
+use Propel\Runtime\Collection\Collection;
 use Thelia\Model\OrderQuery;
 use Thelia\Model\OrderProductQuery;
 use Thelia\Model\OrderCouponQuery;
@@ -26,7 +26,7 @@ class PerfectStatsService
     const VALID_STATUSES = [2, 3, 4];
 
 
-    public function getYearDateRange($year)
+    public function getYearDateRange($year): array
     {
         return [
             'start' => sprintf('%d-01-01 00:00:00', $year),
@@ -35,7 +35,7 @@ class PerfectStatsService
     }
 
 
-    public function getMonthDateRange($year, $month)
+    public function getMonthDateRange($year, $month): array
     {
         $lastDay = date('t', mktime(0, 0, 0, $month, 1, $year));
         return [
@@ -54,9 +54,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws \DateMalformedStringException
-     */
     public function getWeekDateRange($year, $week): array
     {
         $dto = new \DateTime();
@@ -80,9 +77,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws \DateMalformedStringException
-     */
     public function getGranularityForCustomRange(string $startDate, string $endDate, string $granularity): array
     {
         $startDt = new \DateTime(substr($startDate, 0, 10));
@@ -162,9 +156,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
     public function buildOrderStatsForRange($currentRange, $previousRange, $currentYear, $previousYear, $granularity, $labels, ?\DateTime $startDt = null, ?\DateTime $prevStartDt = null): array
     {
         return [
@@ -215,9 +206,6 @@ class PerfectStatsService
         }
     }
 
-    /**
-     * @throws PropelException
-     */
     protected function aggregateOrderData(string $startDate, string $endDate, string $granularity, int $count, ?\DateTime $startDt = null): array
     {
         $orders   = OrderQuery::create()
@@ -236,9 +224,6 @@ class PerfectStatsService
         return ['sent' => $sent, 'cancelled' => $cancelled];
     }
 
-    /**
-     * @throws PropelException
-     */
     protected function aggregateRevenueData(string $startDate, string $endDate, string $granularity, int $count, ?\DateTime $startDt = null): array
     {
         $orders  = OrderQuery::create()
@@ -257,7 +242,7 @@ class PerfectStatsService
     }
 
 
-    public function getTranslatedMonths()
+    public function getTranslatedMonths(): array
     {
         $translator = Translator::getInstance();
 
@@ -285,7 +270,7 @@ class PerfectStatsService
     }
 
 
-    public function getSummary($currentYear, $previousYear, $locale = 'fr_FR')
+    public function getSummary($currentYear, $previousYear, $locale = 'fr_FR'): array
     {
         $currentRange = $this->getYearDateRange($currentYear);
         $previousRange = $this->getYearDateRange($previousYear);
@@ -294,7 +279,7 @@ class PerfectStatsService
     }
 
 
-    public function getMonthlySummary($currentYear, $previousYear, $month, $locale = 'fr_FR')
+    public function getMonthlySummary($currentYear, $previousYear, $month, $locale = 'fr_FR'): array
     {
         $currentRange = $this->getMonthDateRange($currentYear, $month);
         $previousRange = $this->getMonthDateRange($previousYear, $month);
@@ -303,10 +288,7 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
-    public function buildSummary($currentRange, $previousRange, $currentYear, $previousYear)
+    public function buildSummary($currentRange, $previousRange, $currentYear, $previousYear): array
     {
         $currentOrders = OrderQuery::create()
             ->filterByCreatedAt($currentRange['start'], Criteria::GREATER_EQUAL)
@@ -377,9 +359,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
     public function getOrderStats($currentYear, $previousYear): array
     {
         $currentRange = $this->getYearDateRange($currentYear);
@@ -397,9 +376,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
     public function getMonthlyOrderStats($currentYear, $previousYear, $month): array
     {
         $currentRange = $this->getMonthDateRange($currentYear, $month);
@@ -418,9 +394,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
     protected function getMonthlyOrderData($startDate, $endDate): array
     {
         $orders = OrderQuery::create()
@@ -441,9 +414,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
     protected function getDailyOrderData($startDate, $endDate, $daysInMonth): array
     {
         $orders = OrderQuery::create()
@@ -466,9 +436,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
     public function getMonthlyRevenueStats($currentYear, $previousYear): array
     {
         $currentRange = $this->getYearDateRange($currentYear);
@@ -486,9 +453,6 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
     public function getMonthlyDailyRevenueStats($currentYear, $previousYear, $month): array
     {
         $currentRange = $this->getMonthDateRange($currentYear, $month);
@@ -506,9 +470,6 @@ class PerfectStatsService
         ];
     }
 
-    /**
-     * @throws PropelException
-     */
     protected function getMonthlyRevenueData($startDate, $endDate): array
     {
         $orders = OrderQuery::create()
@@ -525,9 +486,6 @@ class PerfectStatsService
         return array_map(function($v) { return round($v, 2); }, $revenue);
     }
 
-    /**
-     * @throws PropelException
-     */
     protected function getDailyRevenueData($startDate, $endDate, $daysInMonth): array
     {
         $orders = OrderQuery::create()
@@ -547,10 +505,7 @@ class PerfectStatsService
     }
 
 
-    /**
-     * @throws PropelException
-     */
-    public function getPaymentMethodStats($currentYear, $previousYear)
+    public function getPaymentMethodStats($currentYear, $previousYear): array
     {
         $currentRange = $this->getYearDateRange($currentYear);
         $previousRange = $this->getYearDateRange($previousYear);
@@ -558,17 +513,14 @@ class PerfectStatsService
     }
 
 
-    public function getMonthlyPaymentMethodStats($currentYear, $previousYear, $month)
+    public function getMonthlyPaymentMethodStats($currentYear, $previousYear, $month): array
     {
         $currentRange = $this->getMonthDateRange($currentYear, $month);
         $previousRange = $this->getMonthDateRange($previousYear, $month);
         return $this->buildPaymentStats($currentRange, $previousRange, $currentYear, $previousYear);
     }
 
-    /**
-     * @throws PropelException
-     */
-    public function buildPaymentStats($currentRange, $previousRange, $currentYear, $previousYear)
+    public function buildPaymentStats($currentRange, $previousRange, $currentYear, $previousYear): array
     {
         $currentOrders = OrderQuery::create()
             ->filterByCreatedAt($currentRange['start'], Criteria::GREATER_EQUAL)
@@ -605,7 +557,7 @@ class PerfectStatsService
     }
 
 
-    public function getShippingMethodStats($currentYear, $previousYear)
+    public function getShippingMethodStats($currentYear, $previousYear): array
     {
         $currentRange = $this->getYearDateRange($currentYear);
         $previousRange = $this->getYearDateRange($previousYear);
@@ -613,14 +565,14 @@ class PerfectStatsService
     }
 
 
-    public function getMonthlyShippingMethodStats($currentYear, $previousYear, $month)
+    public function getMonthlyShippingMethodStats($currentYear, $previousYear, $month): array
     {
         $currentRange = $this->getMonthDateRange($currentYear, $month);
         $previousRange = $this->getMonthDateRange($previousYear, $month);
         return $this->buildShippingStats($currentRange, $previousRange, $currentYear, $previousYear);
     }
 
-    public function buildShippingStats($currentRange, $previousRange, $currentYear, $previousYear)
+    public function buildShippingStats($currentRange, $previousRange, $currentYear, $previousYear): array
     {
         $currentOrders = OrderQuery::create()
             ->filterByCreatedAt($currentRange['start'], Criteria::GREATER_EQUAL)
@@ -657,7 +609,7 @@ class PerfectStatsService
     }
 
 
-    public function getProductStats($currentYear, $previousYear)
+    public function getProductStats($currentYear, $previousYear): array
     {
         $currentRange = $this->getYearDateRange($currentYear);
         $previousRange = $this->getYearDateRange($previousYear);
@@ -665,14 +617,14 @@ class PerfectStatsService
     }
 
 
-    public function getMonthlyProductStats($currentYear, $previousYear, $month)
+    public function getMonthlyProductStats($currentYear, $previousYear, $month): array
     {
         $currentRange = $this->getMonthDateRange($currentYear, $month);
         $previousRange = $this->getMonthDateRange($previousYear, $month);
         return $this->buildProductStats($currentRange, $previousRange, $currentYear, $previousYear);
     }
 
-    public function buildProductStats($currentRange, $previousRange, $currentYear, $previousYear)
+    public function buildProductStats($currentRange, $previousRange, $currentYear, $previousYear): array
     {
         $currentProducts = OrderProductQuery::create()
             ->useOrderQuery()
@@ -724,7 +676,7 @@ class PerfectStatsService
     }
 
 
-    public function getCustomerStats($currentYear, $previousYear)
+    public function getCustomerStats($currentYear, $previousYear): array
     {
         $currentRange = $this->getYearDateRange($currentYear);
         $previousRange = $this->getYearDateRange($previousYear);
@@ -732,14 +684,14 @@ class PerfectStatsService
     }
 
 
-    public function getMonthlyCustomerStats($currentYear, $previousYear, $month)
+    public function getMonthlyCustomerStats($currentYear, $previousYear, $month): array
     {
         $currentRange = $this->getMonthDateRange($currentYear, $month);
         $previousRange = $this->getMonthDateRange($previousYear, $month);
         return $this->buildCustomerStats($currentRange, $previousRange, $currentYear, $previousYear);
     }
 
-    public function buildCustomerStats($currentRange, $previousRange, $currentYear, $previousYear)
+    public function buildCustomerStats($currentRange, $previousRange, $currentYear, $previousYear): array
     {
         $currentOrders = OrderQuery::create()
             ->filterByCreatedAt($currentRange['start'], Criteria::GREATER_EQUAL)
@@ -839,7 +791,7 @@ class PerfectStatsService
     }
 
 
-    public function getGeographyStats($currentYear, $previousYear, $locale = 'fr_FR')
+    public function getGeographyStats($currentYear, $previousYear, $locale = 'fr_FR'): array
     {
         $currentRange = $this->getYearDateRange($currentYear);
         $previousRange = $this->getYearDateRange($previousYear);
@@ -847,14 +799,14 @@ class PerfectStatsService
     }
 
 
-    public function getMonthlyGeographyStats($currentYear, $previousYear, $month, $locale = 'fr_FR')
+    public function getMonthlyGeographyStats($currentYear, $previousYear, $month, $locale = 'fr_FR'): array
     {
         $currentRange = $this->getMonthDateRange($currentYear, $month);
         $previousRange = $this->getMonthDateRange($previousYear, $month);
         return $this->buildGeographyStats($currentRange, $previousRange, $currentYear, $previousYear, $locale);
     }
 
-    public function buildGeographyStats($currentRange, $previousRange, $currentYear, $previousYear, $locale)
+    public function buildGeographyStats($currentRange, $previousRange, $currentYear, $previousYear, $locale): array
     {
         $currentOrders = OrderQuery::create()
             ->filterByCreatedAt($currentRange['start'], Criteria::GREATER_EQUAL)
@@ -900,7 +852,7 @@ class PerfectStatsService
     }
 
 
-    protected function getCountryStats($orders, $locale = 'fr_FR', $addressMap = [], $countryMap = [])
+    protected function getCountryStats($orders, $locale = 'fr_FR', $addressMap = [], $countryMap = []): array
     {
         $countryStats = [];
 
@@ -945,7 +897,7 @@ class PerfectStatsService
     }
 
 
-    protected function getCountryFlag($countryCode)
+    protected function getCountryFlag($countryCode): string
     {
         if (empty($countryCode) || strlen($countryCode) !== 2) {
             return '🌍';
@@ -982,7 +934,7 @@ class PerfectStatsService
     }
 
 
-    protected function getModuleName($moduleId)
+    protected function getModuleName($moduleId): string
     {
         if (!$moduleId) return 'Inconnu';
 
@@ -1038,7 +990,7 @@ class PerfectStatsService
         ];
     }
 
-    protected function getOrderProductsInRange(string $startDate, string $endDate)
+    protected function getOrderProductsInRange(string $startDate, string $endDate): array|Collection
     {
         return OrderProductQuery::create()
             ->useOrderQuery()
